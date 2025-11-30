@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install backend requirements
+        run: |
+          cd backend
+          python -m pip install -r requirements.txt
+      - name: Run backend tests
+        run: |
+          cd backend
+          pytest -q
+
+  frontend-build-and-deploy:
+    needs: backend-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          npm ci
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./frontend/dist
+
+  e2e-tests:
+    needs: frontend-build-and-deploy
+    runs-on: ubuntu-latest
+    services: {}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install dependencies including Playwright
+        run: |
+          cd frontend
+          npm ci
+          npx playwright install --with-deps
+      - name: Serve frontend dist
+        run: |
+          cd frontend/dist
+          npx http-server -p 8080 &
+          sleep 1
+      - name: Start backend API
+        run: |
+          cd backend
+          python -m pip install -r requirements.txt
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          sleep 2
+      - name: Run Playwright tests
+        run: |
+          cd frontend
+          PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 npx playwright test --reporter=list

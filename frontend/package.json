@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.158.0",
+    "@playwright/test": "^1.45.0",
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
@@ -32,6 +33,10 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "npm:rolldown-vite@7.2.5"
+  },
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"
