@@ -3,7 +3,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 export type ThreeViewerHandle = {
-  snapshot: () => string | null;
+  snapshot: (scale?: number) => string | null;
+};
+
+type CoreMeta = {
+  area_mm2?: number;
+  size_mm2?: number;
+  color?: string;
+  cca?: number;
 };
 
 type Props = {
@@ -12,23 +19,38 @@ type Props = {
   sheathRadius?: number; // visual radius
   length?: number;
   coreColors?: string[];
+  coreMeta?: CoreMeta[];
+  onCoreSelect?: (index: number | null, meta?: CoreMeta | null) => void;
   width?: number | string;
   height?: number | string;
 };
 
 const ThreeViewer = forwardRef<ThreeViewerHandle, Props>(
-  ({ cores = 3, coreRadius = 6, sheathRadius = 22, length = 140, coreColors = [], width = 320, height = 200 }, ref) => {
+  ({ cores = 3, coreRadius = 6, sheathRadius = 22, length = 140, coreColors = [], coreMeta = [], onCoreSelect, width = 320, height = 200 }, ref) => {
     const mountRef = useRef<HTMLDivElement | null>(null);
     const frameId = useRef<number | null>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
 
     useImperativeHandle(ref, () => ({
-      snapshot: () => {
+      snapshot: (scale = 1) => {
         const renderer = rendererRef.current;
         if (!renderer) return null;
         try {
-          const data = renderer.domElement.toDataURL('image/png');
-          return data;
+          const canvas = renderer.domElement as HTMLCanvasElement;
+          if (scale && scale > 1) {
+            // temporarily increase pixel ratio & size for higher-res snapshot
+            const prevPR = renderer.getPixelRatio();
+            const prevSize = renderer.getSize(new THREE.Vector2());
+            renderer.setPixelRatio(prevPR * scale);
+            renderer.setSize(prevSize.x * scale, prevSize.y * scale, false);
+            renderer.render((renderer as any).__scene, (renderer as any).__camera);
+            const data = canvas.toDataURL('image/png');
+            // restore
+            renderer.setPixelRatio(prevPR);
+            renderer.setSize(prevSize.x, prevSize.y, false);
+            return data;
+          }
+          return canvas.toDataURL('image/png');
         } catch (err) {
           return null;
         }
@@ -118,7 +140,8 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, Props>(
       for (let i = 0; i < placed; i++) {
         const angle = (i / placed) * Math.PI * 2;
         const geometry = new THREE.CylinderGeometry(coreRadius, coreRadius, length * 0.9, 32);
-        const color = coreColors[i % coreColors.length] ? parseInt(coreColors[i % coreColors.length].replace('#', '0x')) : i % 2 === 0 ? 0xff8c00 : 0x1e88e5;
+        const colorHex = coreColors && coreColors.length ? coreColors[i % coreColors.length] : undefined;
+        const color = colorHex ? parseInt(colorHex.replace('#', '0x')) : i % 2 === 0 ? 0xff8c00 : 0x1e88e5;
         const material = new THREE.MeshStandardMaterial({ color });
         const cylinder = new THREE.Mesh(geometry, material);
         cylinder.rotation.z = Math.PI / 2;
@@ -128,6 +151,10 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, Props>(
         coreMeshes.push(cylinder);
       }
       scene.add(coreGroup);
+
+      // expose scene/camera on renderer to allow offscreen snapshot rendering
+      (renderer as any).__scene = scene;
+      (renderer as any).__camera = camera;
 
       const grid = new THREE.GridHelper(200, 20, 0xdddddd, 0xeeeeee);
       grid.position.y = -40;
@@ -209,6 +236,9 @@ const ThreeViewer = forwardRef<ThreeViewerHandle, Props>(
             selectedIndex = idx;
             coreMeshes[idx].scale.set(1.2, 1.2, 1.2);
           }
+          // call back with metadata if provided
+          const meta = coreMeta && coreMeta.length > idx ? coreMeta[idx] : undefined;
+          if (onCoreSelect) onCoreSelect(selectedIndex, meta || null);
         }
       };
 

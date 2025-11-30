@@ -2,9 +2,10 @@ import { useState, useRef, Suspense, lazy } from 'react';
 
 const ThreeViewer = lazy(() => import('./ThreeViewer'));
 
-export default function DetailViewer({ row, onVerify, addPoints }: { row: any | null; onVerify?: () => void; addPoints?: (n: number) => void }) {
+export default function DetailViewer({ row, onVerify, addPoints, onUpdateRow }: { row: any | null; onVerify?: () => void; addPoints?: (n: number) => void; onUpdateRow?: (r: any) => void }) {
   const [show3D, setShow3D] = useState(false);
   const threeRef = useRef<any>(null);
+  const [scale, setScale] = useState<number>(1);
 
   if (!row) return <div className="p-4 border rounded text-sm text-gray-600">Select a row to see details</div>;
 
@@ -18,8 +19,9 @@ export default function DetailViewer({ row, onVerify, addPoints }: { row: any | 
   const coreRadius = Math.max(3, Math.min(12, conductorDiameter * 0.7));
   const sheathRadius = Math.max(coreRadius * 2.5, 20);
 
-  const handleCapture = () => {
-    const data = threeRef.current?.snapshot?.();
+  const handleCapture = async (hiRes = false) => {
+    const s = hiRes ? scale : 1;
+    const data = threeRef.current?.snapshot?.(s);
     if (data) {
       const a = document.createElement('a');
       a.href = data;
@@ -28,6 +30,13 @@ export default function DetailViewer({ row, onVerify, addPoints }: { row: any | 
       a.click();
       a.remove();
     }
+  };
+
+  const handleCoreSelect = (index: number | null, meta: any | null) => {
+    // persist into row if callback provided
+    if (!row) return;
+    const updated = { ...row, selected_core_index: index, selected_core_meta: meta };
+    if (onUpdateRow) onUpdateRow(updated);
   };
 
   return (
@@ -49,7 +58,7 @@ export default function DetailViewer({ row, onVerify, addPoints }: { row: any | 
           ) : (
             <div className="w-40 h-28">
               <Suspense fallback={<div className="w-40 h-28 flex items-center justify-center text-xs text-gray-500">Loading 3D...</div>}>
-                <ThreeViewer ref={threeRef} cores={cores} coreRadius={coreRadius} sheathRadius={sheathRadius} length={120} />
+                <ThreeViewer ref={threeRef} cores={cores} coreRadius={coreRadius} sheathRadius={sheathRadius} length={120} coreMeta={Array.from({ length: cores }).map((_, i) => ({ size_mm2: row.selection?.size_mm2, area_mm2: row.selection?.size_mm2, color: (row.selection && row.selection.color) || undefined, cca: row.selection?.cca_a }))} onCoreSelect={handleCoreSelect} />
               </Suspense>
             </div>
           )}
@@ -70,7 +79,15 @@ export default function DetailViewer({ row, onVerify, addPoints }: { row: any | 
           <div className="mt-3 flex items-center gap-3">
             <button className="text-sm underline" onClick={() => setShow3D((s) => !s)}>{show3D ? 'Show 2D view' : 'Show 3D view'}</button>
             {show3D ? (
-              <button onClick={handleCapture} className="text-sm bg-gray-100 px-2 py-1 rounded">Capture PNG</button>
+              <>
+                <select value={scale} onChange={(e) => setScale(Number(e.target.value))} className="text-sm border px-2 py-1 rounded">
+                  <option value={1}>1x</option>
+                  <option value={2}>2x</option>
+                  <option value={4}>4x</option>
+                </select>
+                <button onClick={() => handleCapture(false)} className="text-sm bg-gray-100 px-2 py-1 rounded">Capture PNG</button>
+                <button onClick={() => handleCapture(true)} className="text-sm bg-gray-200 px-2 py-1 rounded">Capture Hi-Res</button>
+              </>
             ) : null}
           </div>
         </div>
